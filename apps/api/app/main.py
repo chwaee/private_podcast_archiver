@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from .api.episodes import router as episodes_router
+from .api.shows import router as shows_router
 
 app = FastAPI(
     title="Private Podcast Archive Copilot API",
     version="0.1.0",
-    description="M3 transcript upload & parsing (built on M0/M1 foundations). See PRODUCT_SPEC.md.",
+    description="M2 Show/Episode UI + M3/M4 transcript/ingestion (built on M0/M1 foundations). See PRODUCT_SPEC.md.",
 )
 
 # CORS - allow the web dev server
@@ -31,9 +32,10 @@ def health():
     }
 
 
-# M3 routers
+# M2 routers (shows + episodes CRUD)
+app.include_router(shows_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 
 # Future:
-# from .api import shows, search, chat, exports, jobs
+# from .api import search, chat, exports, jobs
 # app.include_router(...)

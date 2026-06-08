@@ -1,12 +1,12 @@
-"""Minimal Episode + Transcript API for Milestone 3.
+"""Episodes API (M2 full CRUD + M3/M4 transcript/ingest).
 
-Includes:
-- Basic episode retrieval (to support upload UI)
-- POST /episodes/{episode_id}/transcript-files (multipart upload + immediate parse + segment storage)
-- GET /episodes/{episode_id}/segments
-- POST /episodes/{episode_id}/parse-transcript (re-parse if needed)
+Includes full CRUD per PRODUCT_SPEC §14.4:
+- GET/POST /shows/{show_id}/episodes
+- GET/PATCH/DELETE /episodes/{episode_id}
 
-Follows PRODUCT_SPEC §14.5 and §7.4-7.5.
+Plus transcript upload, segments, parse, ingest (M3/M4).
+
+Follows PRODUCT_SPEC §14.4, §14.5, §7.4-7.5.
 Storage uses UPLOADS_DIR from config, organized by workspace/episode.
 No full auth yet (relies on DEV_AUTH_BYPASS / future workspace scoping in queries).
 """
@@ -22,7 +22,13 @@ from sqlalchemy.orm import Session
 
 from ..config import UPLOADS_DIR, AI_EMBEDDING_PROVIDER, AI_EMBEDDING_MODEL
 from ..database import get_db
-from ..models import Episode, TranscriptFile, TranscriptSegment, Chunk, Embedding, IngestionJob
+from ..models import Episode, Show, TranscriptFile, TranscriptSegment, Chunk, Embedding, IngestionJob
+from ..schemas.episodes import (
+    EpisodeCreate,
+    EpisodeUpdate,
+    EpisodeResponse,
+    EpisodeListResponse,
+)
 from ..schemas.transcript import (
     TranscriptFileUploadResponse,
     TranscriptSegmentsListResponse,
@@ -50,6 +56,13 @@ def _get_episode_or_404(episode_id: UUID, db: Session) -> Episode:
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
     return ep
+
+
+def _get_show_or_404(show_id: UUID, db: Session) -> Show:
+    show = db.query(Show).filter(Show.id == show_id).first()
+    if not show:
+        raise HTTPException(status_code=404, detail="Show not found")
+    return show
 
 
 def _save_upload_file(upload: UploadFile, episode: Episode) -> tuple[str, int]:
@@ -225,17 +238,105 @@ def parse_transcript_endpoint(
     }
 
 
-# Minimal episode helpers to support M3 UI without full M2
-@router.get("/{episode_id}")
+# M2: Full episode CRUD (integrated with existing M3/M4 endpoints)
+@router.get("/shows/{show_id}/episodes", response_model=EpisodeListResponse)
+def list_episodes_for_show(
+    show_id: UUID,
+    db: Session = Depends(get_db),
+    limit: int = 100,
+    offset: int = 0,
+):
+    """List episodes under a show (M2)."""
+    _get_show_or_404(show_id, db)
+    query = (
+        db.query(Episode)
+        .filter(Episode.show_id == show_id)
+        .order_by(Episode.created_at.desc())
+    )
+    total = query.count()
+    eps = query.offset(offset).limit(limit).all()
+    return EpisodeListResponse(
+        episodes=[EpisodeResponse.model_validate(e) for e in eps],
+        total=total,
+    )
+
+
+@router.post("/shows/{show_id}/episodes", response_model=EpisodeResponse, status_code=status.HTTP_201_CREATED)
+def create_episode(
+    show_id: UUID,
+    ep_in: EpisodeCreate,
+    db: Session = Depends(get_db),
+):
+    """Create episode under show (M2)."""
+    show = _get_show_or_404(show_id, db)
+    ep = Episode(
+        workspace_id=show.workspace_id,
+        show_id=show_id,
+        **ep_in.model_dump(),
+    )
+    db.add(ep)
+    db.commit()
+    db.refresh(ep)
+    return EpisodeResponse.model_validate(ep)
+
+
+@router.get("/{episode_id}", response_model=EpisodeResponse)
 def get_episode(episode_id: UUID, db: Session = Depends(get_db)):
+    """Get episode detail (M2 + used by M3/M4)."""
     ep = _get_episode_or_404(episode_id, db)
+    return EpisodeResponse.model_validate(ep)
+
+
+@router.patch("/{episode_id}", response_model=EpisodeResponse)
+def update_episode(
+    episode_id: UUID,
+    ep_in: EpisodeUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update episode (M2)."""
+    ep = _get_episode_or_404(episode_id, db)
+    update_data = ep_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(ep, field, value)
+    db.commit()
+    db.refresh(ep)
+    return EpisodeResponse.model_validate(ep)
+
+
+@router.delete("/{episode_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_episode(episode_id: UUID, db: Session = Depends(get_db)):
+    """Delete episode (M2). Cascades to transcripts/chunks via model."""
+    ep = _get_episode_or_404(episode_id, db)
+    db.delete(ep)
+    db.commit()
+    return None
+
+
+@router.get("/{episode_id}/chunks")
+def list_chunks(episode_id: UUID, db: Session = Depends(get_db), limit: int = 50):
+    """List chunks for episode (M4 support for detail page)."""
+    ep = _get_episode_or_404(episode_id, db)
+    chunks = (
+        db.query(Chunk)
+        .filter(Chunk.episode_id == ep.id)
+        .order_by(Chunk.chunk_index)
+        .limit(limit)
+        .all()
+    )
     return {
-        "id": str(ep.id),
-        "title": ep.title,
-        "episode_number": ep.episode_number,
-        "ingestion_status": ep.ingestion_status,
-        "show_id": str(ep.show_id),
-        "workspace_id": str(ep.workspace_id),
+        "episode_id": str(ep.id),
+        "chunks": [
+            {
+                "id": str(c.id),
+                "chunk_index": c.chunk_index,
+                "start_seconds": float(c.start_seconds) if c.start_seconds else None,
+                "end_seconds": float(c.end_seconds) if c.end_seconds else None,
+                "speaker_summary": c.speaker_summary,
+                "text": c.text[:300] + ("..." if len(c.text) > 300 else ""),
+                "token_count": c.token_count,
+            }
+            for c in chunks
+        ],
     }
 
 
