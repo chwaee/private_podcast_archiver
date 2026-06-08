@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the rest of the app (volume mount will override in dev)
 COPY . .
 
+# Entrypoint that runs migrations + seed automatically (for `docker compose up -d --build` only workflow)
+RUN chmod +x entrypoint.sh || true
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./entrypoint.sh"]

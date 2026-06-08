@@ -13,8 +13,24 @@ Usage (example inside container):
 import os
 import sys
 
-# Make the app package importable when run from repo root or scripts/
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "apps", "api")))
+# Make the app package importable.
+# Supports:
+# - Running from project root (traditional)
+# - Running from inside container where scripts/ is mounted at /app/scripts and the api package at /app/app
+script_dir = os.path.dirname(os.path.abspath(__file__))
+candidates = [
+    os.path.abspath(os.path.join(script_dir, "..", "apps", "api")),  # classic layout
+    "/app",                                                          # container: api code mounted at /app, scripts at /app/scripts
+    os.getcwd(),
+    os.path.abspath(os.path.join(script_dir, "..")),
+]
+for candidate in candidates:
+    if os.path.exists(os.path.join(candidate, "app", "database.py")):
+        sys.path.insert(0, candidate)
+        break
+else:
+    # fallback
+    sys.path.insert(0, os.path.abspath(os.path.join(script_dir, "..", "apps", "api")))
 
 from uuid import UUID, uuid4
 from sqlalchemy.orm import Session

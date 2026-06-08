@@ -22,6 +22,31 @@ export default function ShowsPage() {
   const [newShow, setNewShow] = useState({ name: "", slug: "", description: "" });
   const [creating, setCreating] = useState(false);
 
+  // Slug auto-generation (editable)
+  const slugify = (str: string) =>
+    str
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const title = e.target.value;
+    setNewShow((prev) => {
+      const currentSlug = prev.slug;
+      const autoSlug = slugify(prev.name);
+      // Only auto-update slug if it was empty or previously matched the auto value (user hasn't manually edited it)
+      const shouldAuto = !currentSlug || currentSlug === autoSlug;
+      return {
+        ...prev,
+        name: title,
+        slug: shouldAuto ? slugify(title) : currentSlug,
+      };
+    });
+  }
+
   async function fetchShows() {
     setLoading(true);
     setError(null);
@@ -31,7 +56,12 @@ export default function ShowsPage() {
       const data = await res.json();
       setShows(data.shows || []);
     } catch (e: any) {
-      setError(e.message);
+      // Common during `docker compose up`: services still starting or DB not seeded yet.
+      setError(
+        e.message.includes("Failed to fetch")
+          ? "Failed to reach API (common right after `docker compose up -d --build`). Wait 10-20s and refresh, or check `docker compose logs api`."
+          : e.message
+      );
     } finally {
       setLoading(false);
     }
@@ -55,7 +85,7 @@ export default function ShowsPage() {
       setShowCreateForm(false);
       await fetchShows();
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || "Failed to create show. Is the demo workspace seeded and DB reachable?");
     } finally {
       setCreating(false);
     }
@@ -86,30 +116,39 @@ export default function ShowsPage() {
 
       {showCreateForm && (
         <form onSubmit={createShow} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Show Name</label>
             <input
               type="text"
-              placeholder="Show Name"
+              placeholder="The Canadian Investor"
               value={newShow.name}
-              onChange={(e) => setNewShow({ ...newShow, name: e.target.value })}
-              className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Slug (e.g. my-podcast)"
-              value={newShow.slug}
-              onChange={(e) => setNewShow({ ...newShow, slug: e.target.value })}
-              className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+              onChange={handleTitleChange}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
               required
             />
           </div>
-          <textarea
-            placeholder="Description (optional)"
-            value={newShow.description}
-            onChange={(e) => setNewShow({ ...newShow, description: e.target.value })}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm h-20"
-          />
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">
+              Slug (auto-generated from title, editable)
+            </label>
+            <input
+              type="text"
+              placeholder="the-canadian-investor"
+              value={newShow.slug}
+              onChange={(e) => setNewShow({ ...newShow, slug: e.target.value })}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm font-mono"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Description (optional)</label>
+            <textarea
+              placeholder="A long-running finance podcast."
+              value={newShow.description}
+              onChange={(e) => setNewShow({ ...newShow, description: e.target.value })}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm h-20"
+            />
+          </div>
           <button
             type="submit"
             disabled={creating}
