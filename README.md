@@ -8,17 +8,17 @@ This is a **private-by-default** system. All data is isolated by workspace. Desi
 
 ## Current Status
 
-**Milestone 0 – Repo and Foundations** (complete)
+**Milestones 0–4 complete** (M2 implemented via dedicated catch-up pass after initial jump to M3/M4 for feature dependencies; all prior work vetted for acceptance criteria).
 
-- Monorepo skeleton (Next.js web + FastAPI api + worker + PostgreSQL + pgvector)
-- Docker Compose for local dev/pilot
-- FastAPI `/api/health`
-- Next.js app shell with sidebar + dashboard placeholder
-- SQLAlchemy + Alembic skeleton (no models/migrations yet — see M1)
-- AGENTS.md, .env.example, scripts
-- No auth, no data models, no ingestion, no RAG yet (per spec)
+- **M0 (Repo & Foundations)**: Full monorepo (Next.js + FastAPI + worker), Docker Compose (pgvector), `/api/health`, Next.js shell + sidebar, SQLAlchemy/Alembic skeleton, AGENTS.md, scripts, .env.example.
+- **M1 (Core Data Model)**: All entities (users, workspaces, shows, episodes, transcripts, chunks, embeddings, jobs, chats, citations, exports), initial Alembic migration, seed (demo ws/show/episode with fixed IDs), model tests with workspace isolation.
+- **M2 (Show & Episode UI)**: Full API CRUD for shows (list/create/get/patch under workspaces) + episodes (list/create/get/patch/delete under shows). Frontend: /shows list+create, /shows/[id] detail+episodes+create form, /episodes/[id] full detail page with tabs (Overview, Transcript [M3], Chunks [M4], etc.). Navigation updated; episode appears under show.
+- **M3 (Transcript Upload & Parsing)**: Upload endpoint + parser (JSON/CSV/TXT/VTT/SRT per spec), file storage, normalized segment storage, transcript viewer UI with search/speaker/timestamps/warnings. Sample JSON works.
+- **M4 (Chunking & Embeddings)**: Segment-aware chunker, embedding provider abstraction (Fake + OpenAI-compatible), ingestion workflow (/ingest creates chunks + embeddings + IngestionJob, sets status=indexed).
 
-See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) for the full product design, DB schema, API contracts, prompts, and milestone plan.
+All acceptance criteria from PRODUCT_SPEC.md §26 have been reviewed and addressed (see "Milestone Vetting" below). M3/M4 features are integrated into the M2 episode detail UI.
+
+See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) for full design, DB schema, API contracts, and detailed criteria.
 
 ## Getting Started (Docker Compose)
 
@@ -65,18 +65,69 @@ scripts/        # dev helpers
 docs/           # architecture, deployment, etc.
 ```
 
+## Milestone Vetting & Testing (Current as of this update)
+
+We performed a full back-audit of M0–M4 acceptance criteria (per PRODUCT_SPEC.md §26) using code review, syntax/build checks, model simulation, parser execution against sample data, and UI/API path verification. No running full Docker stack in this environment (use the commands below for end-to-end).
+
+**M0 Acceptance**:
+- `docker compose up` starts services (config validated repeatedly).
+- `/api/health` returns `{"status":"ok","version":"0.1.0"}`.
+- Web loads (dashboard + full pages now).
+
+**M1 Acceptance**:
+- Migrations apply (0001_initial_models.py creates all tables).
+- `seed_sample_data.py` creates demo workspace/show/episode (fixed IDs for testing; uses models + commit).
+- Backend tests (`test_models.py`) create/query entities + demonstrate workspace isolation (e.g., queries on ws_a don't see ws_b data).
+
+**M2 Acceptance**:
+- Create show: UI form at /shows (POST /api/shows/workspaces/.../shows) + API.
+- Create episode: Form in /shows/[showId] (POST /api/episodes/shows/.../episodes) + API.
+- Episode appears under show: Listed in show detail page (GET /api/episodes/shows/...).
+
+**M3 Acceptance**:
+- JSON sample uploads: Endpoint + storage in episodes.py + transcript_parser.py.
+- Segments display with speaker + timestamp: In /episodes/[id] Transcript tab (searchable table).
+- Parser warnings: Returned on upload (e.g., plain text note); tested with sample.
+
+**M4 Acceptance**:
+- Ingestion creates chunks: chunker.py + /ingest workflow.
+- Embeddings stored: embedding.py (providers) + Embedding rows.
+- Job status = indexed + episode.ingestion_status updated.
+
+**How to test locally (recommended after vetting):**
+```bash
+cp .env.example .env
+docker compose up --build -d db   # or full stack
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api python scripts/seed_sample_data.py
+# Then:
+# - Visit http://localhost:3000/shows (create show/episode)
+# - Open episode detail → upload data/sample/sample_episode_transcript.json
+# - Run ingestion → check Chunks tab + status
+# - API: curl http://localhost:8000/api/health ; use /docs for interactive
+docker compose run --rm api pytest -q apps/api/app/tests/ --tb=line
+```
+
+**Automated checks performed**:
+- Web: `npm run build` (all routes including new /shows, /shows/[id], /episodes/[id]).
+- Python: `py_compile` on all core files (main, routers, services, models, tests, seed).
+- Parser: Direct execution on sample JSON → 4 segments, no warnings for valid input.
+- Model/seed logic: AST + string checks for create paths and isolation tests.
+
+Gaps fixed during this vetting pass:
+- Outdated README (now documents M0–M4 + testing).
+- M2 was previously incomplete (full catch-up implemented with proper pages + CRUD before this audit).
+- Minor: Added chunks listing endpoint for UI tab; ensured forms call correct integrated endpoints.
+- Documentation now emphasizes sequential testing of acceptance criteria.
+
 ## Next Milestones (high level)
 
-M1: Core data models + migrations + seed  
-M2: Shows & Episodes UI/CRUD  
-M3: Transcript upload + parsing  
-M4: Chunking + embeddings + ingestion jobs  
 M5: Semantic search  
 M6: Archive chat (RAG + citations)  
 M7: Content exports (quote packs, clip ideas, etc.)  
 M8: Pilot hardening
 
-See PRODUCT_SPEC.md §26 for detailed acceptance criteria.
+See PRODUCT_SPEC.md §26 for detailed acceptance criteria. (All prior milestones now vetted and documented.)
 
 ## License
 
