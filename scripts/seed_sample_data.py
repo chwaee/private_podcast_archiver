@@ -16,11 +16,16 @@ import sys
 # Make the app package importable when run from repo root or scripts/
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "apps", "api")))
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.database import engine, SessionLocal
 from app.models import Workspace, Show, Episode
+
+# Fixed demo IDs for M3 testing (upload + transcript viewer)
+DEMO_WORKSPACE_ID = UUID("11111111-1111-1111-1111-111111111111")
+DEMO_SHOW_ID = UUID("22222222-2222-2222-2222-222222222222")
+DEMO_EPISODE_ID = UUID("33333333-3333-3333-3333-333333333333")
 
 
 def main() -> None:
@@ -35,14 +40,16 @@ def main() -> None:
             return
 
         ws = Workspace(
+            id=DEMO_WORKSPACE_ID,
             name="Demo Workspace",
             slug="demo",
             description="Seeded by M1 seed script for local development and testing.",
         )
         session.add(ws)
-        session.flush()  # get ws.id
+        session.flush()
 
         show = Show(
+            id=DEMO_SHOW_ID,
             workspace_id=ws.id,
             name="The Canadian Investor",
             slug="canadian-investor",
@@ -53,12 +60,13 @@ def main() -> None:
         session.flush()
 
         ep = Episode(
+            id=DEMO_EPISODE_ID,
             workspace_id=ws.id,
             show_id=show.id,
             title="The Biggest Financial Mistake I Ever Made",
             episode_number="427",
             description="Host discusses a personal lesson about yield chasing.",
-            publish_date=None,  # would be a real date in production seed
+            publish_date=None,
             ingestion_status="not_started",
         )
         session.add(ep)
