@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: podcast_copilot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./apps/api:/app
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/podcast_copilot
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    # M0 stub: long sleep so container stays up; real worker process added in later milestones
+    command: python -c "import time, os; print('Worker (M0 stub) started'); print('DB URL present:', bool(os.getenv('DATABASE_URL'))); [time.sleep(3600) for _ in range(24)]"
+    volumes:
+      - ./apps/api:/app
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/podcast_copilot
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    command: npm run dev
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

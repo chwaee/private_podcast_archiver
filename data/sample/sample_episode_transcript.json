@@ -1,0 +1,26 @@
+[
+  {
+    "speaker": "Host",
+    "start": 0.0,
+    "end": 8.0,
+    "text": "Welcome back to the show. Today we are talking about the biggest financial mistake I ever made."
+  },
+  {
+    "speaker": "Host",
+    "start": 8.0,
+    "end": 26.0,
+    "text": "One of the easiest mistakes investors make is chasing yield without understanding the risk underneath that yield."
+  },
+  {
+    "speaker": "Host",
+    "start": 26.0,
+    "end": 44.0,
+    "text": "A high dividend can look attractive, but if the business is deteriorating, the dividend may not be sustainable."
+  },
+  {
+    "speaker": "Host",
+    "start": 44.0,
+    "end": 64.0,
+    "text": "The lesson is not that dividends are bad. The lesson is that investors need to understand the business, the balance sheet, and the durability of the cash flow."
+  }
+]
