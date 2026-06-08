@@ -17,5 +17,12 @@ UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "/app/data/uploads")
 EXPORTS_DIR: str = os.getenv("EXPORTS_DIR", "/app/data/exports")
 
 AI_CHAT_PROVIDER: str = os.getenv("AI_CHAT_PROVIDER", "openai_compatible")
-AI_EMBEDDING_PROVIDER: str = os.getenv("AI_EMBEDDING_PROVIDER", "openai_compatible")
+AI_CHAT_MODEL: str = os.getenv("AI_CHAT_MODEL", "")
+AI_CHAT_BASE_URL: str = os.getenv("AI_CHAT_BASE_URL", "")
+AI_CHAT_API_KEY: str = os.getenv("AI_CHAT_API_KEY", "")
+
+AI_EMBEDDING_PROVIDER: str = os.getenv("AI_EMBEDDING_PROVIDER", "fake")
+AI_EMBEDDING_BASE_URL: str = os.getenv("AI_EMBEDDING_BASE_URL", "")
+AI_EMBEDDING_API_KEY: str = os.getenv("AI_EMBEDDING_API_KEY", "")
+AI_EMBEDDING_MODEL: str = os.getenv("AI_EMBEDDING_MODEL", "text-embedding-3-small")
 AI_EMBEDDING_DIMENSIONS: int = int(os.getenv("AI_EMBEDDING_DIMENSIONS", "1024"))

@@ -19,7 +19,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
         sqlalchemy \
         alembic \
         "psycopg[binary]" \
-        pgvector
+        pgvector \
+        httpx  # for embedding provider (M4)
 
 # Copy the rest of the app (volume mount will override in dev)
 COPY . .

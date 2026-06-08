@@ -172,3 +172,48 @@ def test_ingestion_job_and_chunk_models(db_session: Session):
 
     assert db_session.get(IngestionJob, job.id).status == "queued"
     assert db_session.get(Chunk, chunk.id).token_count == 12
+
+
+# M4 tests: chunking + embeddings (pure + model)
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.services.chunker import chunk_segments
+from app.services.embedding import FakeEmbeddingProvider, get_embedding_provider
+
+
+def test_chunker_basic():
+    """Test segment-aware chunking produces correct metadata and overlap behavior."""
+    segments = [
+        {"segment_index": 0, "speaker": "Host", "start_seconds": 0.0, "end_seconds": 10.0, "text": "This is the first sentence about investing basics and risk."},
+        {"segment_index": 1, "speaker": "Host", "start_seconds": 10.0, "end_seconds": 20.0, "text": "Diversification helps reduce concentration risk over time."},
+        {"segment_index": 2, "speaker": "Guest", "start_seconds": 20.0, "end_seconds": 35.0, "text": "We discussed bonds and how they behave in different market conditions including inflation."},
+    ]
+    chunks = chunk_segments(segments, max_tokens=30, overlap_tokens=10)  # force small chunks
+    assert len(chunks) >= 1
+    for ch in chunks:
+        assert "start_segment_index" in ch
+        assert "end_segment_index" in ch
+        assert ch["start_seconds"] is not None
+        assert ch["text"]
+        assert ch["token_count"] > 0
+
+
+def test_fake_embedding_provider():
+    """Fake provider is deterministic and produces correct dimension."""
+    provider = FakeEmbeddingProvider(dimensions=128)
+    vecs = provider.embed_texts(["hello world", "hello world", "different text"])
+    assert len(vecs) == 3
+    assert len(vecs[0]) == 128
+    assert vecs[0] == vecs[1]  # same input -> same output
+    assert vecs[0] != vecs[2]
+    q = provider.embed_query("query test")
+    assert len(q) == 128
+
+
+def test_get_embedding_provider_returns_fake_by_default(monkeypatch):
+    """Default or 'fake' provider is the test one."""
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "fake")
+    # reimport or call factory (config loaded at import time in real, but factory reads env)
+    prov = get_embedding_provider()
+    assert isinstance(prov, FakeEmbeddingProvider)

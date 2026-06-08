@@ -12,6 +12,7 @@ No full auth yet (relies on DEV_AUTH_BYPASS / future workspace scoping in querie
 """
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -19,9 +20,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.orm import Session
 
-from ..config import UPLOADS_DIR
+from ..config import UPLOADS_DIR, AI_EMBEDDING_PROVIDER, AI_EMBEDDING_MODEL
 from ..database import get_db
-from ..models import Episode, TranscriptFile, TranscriptSegment
+from ..models import Episode, TranscriptFile, TranscriptSegment, Chunk, Embedding, IngestionJob
 from ..schemas.transcript import (
     TranscriptFileUploadResponse,
     TranscriptSegmentsListResponse,
@@ -29,6 +30,8 @@ from ..schemas.transcript import (
     ParseTranscriptRequest,
 )
 from ..services.transcript_parser import parse_transcript, segments_to_db_rows
+from ..services.chunker import chunk_segments
+from ..services.embedding import get_embedding_provider
 
 router = APIRouter(prefix="/episodes", tags=["episodes"])
 
@@ -234,3 +237,136 @@ def get_episode(episode_id: UUID, db: Session = Depends(get_db)):
         "show_id": str(ep.show_id),
         "workspace_id": str(ep.workspace_id),
     }
+
+
+# =============================================================================
+# M4: Chunking + Embeddings + Ingestion
+# =============================================================================
+
+@router.post("/{episode_id}/ingest")
+def ingest_episode(
+    episode_id: UUID,
+    force_reprocess: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Trigger full ingestion for an episode: chunking + embeddings.
+    Updates episode.ingestion_status to 'indexed' on success.
+    Creates IngestionJob record.
+    For MVP runs synchronously (later offload to worker).
+    """
+    episode = _get_episode_or_404(episode_id, db)
+
+    # Check if we have segments
+    seg_count = (
+        db.query(TranscriptSegment)
+        .filter(TranscriptSegment.episode_id == episode.id)
+        .count()
+    )
+    if seg_count == 0:
+        raise HTTPException(
+            status_code=400, detail="No transcript segments found. Upload transcript first."
+        )
+
+    if episode.ingestion_status == "indexed" and not force_reprocess:
+        return {"episode_id": str(episode.id), "status": "already_indexed", "message": "Use force_reprocess=true to re-ingest."}
+
+    # Create job
+    job = IngestionJob(
+        workspace_id=episode.workspace_id,
+        episode_id=episode.id,
+        job_type="full_ingestion",
+        status="running",
+        progress_percent=10,
+    )
+    db.add(job)
+    db.flush()
+
+    try:
+        # Fetch segments ordered
+        segments = (
+            db.query(TranscriptSegment)
+            .filter(TranscriptSegment.episode_id == episode.id)
+            .order_by(TranscriptSegment.segment_index)
+            .all()
+        )
+        seg_dicts = [
+            {
+                "segment_index": s.segment_index,
+                "speaker": s.speaker,
+                "start_seconds": float(s.start_seconds) if s.start_seconds is not None else None,
+                "end_seconds": float(s.end_seconds) if s.end_seconds is not None else None,
+                "text": s.text,
+            }
+            for s in segments
+        ]
+
+        # 1. Chunk
+        job.progress_percent = 30
+        db.commit()
+        chunk_dicts = chunk_segments(seg_dicts)
+
+        # Delete old chunks/embeddings if reprocess
+        if force_reprocess:
+            old_chunk_ids = [c.id for c in db.query(Chunk).filter(Chunk.episode_id == episode.id).all()]
+            if old_chunk_ids:
+                db.query(Embedding).filter(Embedding.chunk_id.in_(old_chunk_ids)).delete()
+            db.query(Chunk).filter(Chunk.episode_id == episode.id).delete()
+
+        # Insert chunks
+        chunk_models = []
+        for cd in chunk_dicts:
+            ch = Chunk(
+                workspace_id=episode.workspace_id,
+                episode_id=episode.id,
+                chunk_index=cd["chunk_index"],
+                start_segment_index=cd["start_segment_index"],
+                end_segment_index=cd["end_segment_index"],
+                start_seconds=cd["start_seconds"],
+                end_seconds=cd["end_seconds"],
+                speaker_summary=cd["speaker_summary"],
+                text=cd["text"],
+                token_count=cd["token_count"],
+                metadata_json=cd.get("metadata_json"),
+            )
+            db.add(ch)
+            chunk_models.append(ch)
+        db.flush()  # get IDs
+
+        # 2. Embed
+        job.progress_percent = 60
+        db.commit()
+        provider = get_embedding_provider()
+        texts = [c.text for c in chunk_models]
+        vectors = provider.embed_texts(texts)
+
+        for ch, vec in zip(chunk_models, vectors):
+            emb = Embedding(
+                workspace_id=episode.workspace_id,
+                chunk_id=ch.id,
+                provider=AI_EMBEDDING_PROVIDER,
+                model=AI_EMBEDDING_MODEL or getattr(provider, "model", "fake"),
+                dimensions=len(vec),
+                embedding=vec,
+            )
+            db.add(emb)
+
+        # Finalize
+        episode.ingestion_status = "indexed"
+        episode.indexed_at = datetime.now(timezone.utc)
+        job.status = "succeeded"
+        job.progress_percent = 100
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        return {
+            "episode_id": str(episode.id),
+            "status": "indexed",
+            "chunks_created": len(chunk_models),
+            "job_id": str(job.id),
+        }
+
+    except Exception as e:
+        job.status = "failed"
+        job.error_message = str(e)[:500]
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")

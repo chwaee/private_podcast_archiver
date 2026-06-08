@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.13.0",
     "psycopg[binary]>=3.2.0",
     "pgvector>=0.3.0",  # Required for pgvector.sqlalchemy.Vector column type (embeddings table, spec §13 + §17). Added in M1.
+    "httpx>=0.27",  # For embedding provider API calls (M4)
 ]
 
 [tool.setuptools.packages.find]
