@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
         alembic \
         "psycopg[binary]" \
         pgvector \
-        httpx  # for embedding provider (M4)
+        httpx \  # for embedding provider (M4)
+        python-multipart  # required by FastAPI for UploadFile / multipart form data (M3 transcript upload)
 
 # Copy the rest of the app (volume mount will override in dev)
 COPY . .

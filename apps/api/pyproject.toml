@@ -13,6 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "pgvector>=0.3.0",  # Required for pgvector.sqlalchemy.Vector column type (embeddings table, spec §13 + §17). Added in M1.
     "httpx>=0.27",  # For embedding provider API calls (M4)
+    "python-multipart>=0.0.9",  # Required by FastAPI for File/UploadFile multipart form handling (M3 transcript upload endpoint)
 ]
 
 [tool.setuptools.packages.find]
