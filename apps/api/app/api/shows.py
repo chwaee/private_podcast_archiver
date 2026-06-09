@@ -102,3 +102,12 @@ def update_show(
     db.commit()
     db.refresh(show)
     return ShowResponse.model_validate(show)
+
+
+@router.delete("/{show_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_show(show_id: UUID, db: Session = Depends(get_db)):
+    """Delete show (M2 extension). Cascades via DB/models if episodes etc. have ondelete."""
+    show = _get_show_or_404(show_id, db)
+    db.delete(show)
+    db.commit()
+    return None

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000/api";
@@ -23,6 +23,7 @@ interface Episode {
 
 export default function ShowDetailPage() {
   const params = useParams<{ showId: string }>();
+  const router = useRouter();
   const showId = params.showId;
 
   const [show, setShow] = useState<Show | null>(null);
@@ -32,6 +33,11 @@ export default function ShowDetailPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newEp, setNewEp] = useState({ title: "", episode_number: "", description: "" });
   const [creating, setCreating] = useState(false);
+
+  // For editing the show
+  const [showEdit, setShowEdit] = useState(false);
+  const [editShow, setEditShow] = useState({ name: "", slug: "", description: "" });
+  const [updating, setUpdating] = useState(false);
 
   async function fetchData() {
     setLoading(true);
@@ -48,6 +54,14 @@ export default function ShowDetailPage() {
       const epsData = await epsRes.json();
       setShow(showData);
       setEpisodes(epsData.episodes || []);
+      // Prefill edit form when show loads
+      if (showData) {
+        setEditShow({
+          name: showData.name,
+          slug: showData.slug,
+          description: showData.description || "",
+        });
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -79,6 +93,43 @@ export default function ShowDetailPage() {
     }
   }
 
+  async function updateShow(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editShow.name || !editShow.slug) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`${API_BASE}/shows/${showId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editShow),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Update failed");
+      }
+      setShowEdit(false);
+      await fetchData();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function deleteShow() {
+    if (!confirm("Delete this show? This will also delete all its episodes (and their data).")) return;
+    try {
+      const res = await fetch(`${API_BASE}/shows/${showId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Delete failed");
+      }
+      router.push("/shows");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
   useEffect(() => {
     if (showId) fetchData();
   }, [showId]);
@@ -94,6 +145,67 @@ export default function ShowDetailPage() {
         <div className="text-xs text-zinc-500">/{show.slug}</div>
         {show.description && <p className="text-sm text-zinc-400 mt-1">{show.description}</p>}
       </div>
+
+      {/* Show edit/delete controls */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            setShowEdit(!showEdit);
+            if (!showEdit && show) {
+              setEditShow({ name: show.name, slug: show.slug, description: show.description || "" });
+            }
+          }}
+          className="rounded border border-zinc-700 px-3 py-1 text-sm hover:bg-zinc-800"
+        >
+          {showEdit ? "Cancel Edit" : "Edit Show"}
+        </button>
+        <button
+          onClick={deleteShow}
+          className="rounded border border-red-700 px-3 py-1 text-sm text-red-400 hover:bg-zinc-800"
+        >
+          Delete Show
+        </button>
+      </div>
+
+      {showEdit && (
+        <form onSubmit={updateShow} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Show Name</label>
+            <input
+              type="text"
+              value={editShow.name}
+              onChange={(e) => setEditShow({ ...editShow, name: e.target.value })}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Slug</label>
+            <input
+              type="text"
+              value={editShow.slug}
+              onChange={(e) => setEditShow({ ...editShow, slug: e.target.value })}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm font-mono"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">Description (optional)</label>
+            <textarea
+              value={editShow.description}
+              onChange={(e) => setEditShow({ ...editShow, description: e.target.value })}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm h-20"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={updating}
+            className="rounded bg-white text-black px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            {updating ? "Saving..." : "Save Changes"}
+          </button>
+        </form>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="text-lg font-medium">Episodes</div>

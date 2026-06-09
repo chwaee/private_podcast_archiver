@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000/api";
@@ -36,10 +36,12 @@ interface Chunk {
 
 export default function EpisodeDetailPage() {
   const params = useParams<{ episodeId: string }>();
+  const router = useRouter();
   const episodeId = params.episodeId;
 
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "transcript" | "chunks" | "exports" | "metadata">("overview");
+  const [error, setError] = useState<string | null>(null);
 
   // Transcript state (from M3)
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -52,6 +54,11 @@ export default function EpisodeDetailPage() {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
+
+  // Episode edit state (M2 CRUD)
+  const [showEdit, setShowEdit] = useState(false);
+  const [editEp, setEditEp] = useState({ title: "", episode_number: "", description: "" });
+  const [updating, setUpdating] = useState(false);
 
   const filteredSegments = segments.filter((seg) => {
     const q = search.toLowerCase();
@@ -141,6 +148,47 @@ export default function EpisodeDetailPage() {
     }
   }
 
+  async function updateEpisode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editEp.title) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`${API_BASE}/episodes/${episodeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editEp),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Update failed");
+      }
+      setShowEdit(false);
+      await fetchEpisode();
+    } catch (err: any) {
+      setError(err.message || "Update failed");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function deleteEpisode() {
+    if (!confirm("Delete this episode? All associated transcripts, chunks, and data will be removed.")) return;
+    try {
+      const res = await fetch(`${API_BASE}/episodes/${episodeId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Delete failed");
+      }
+      if (episode) {
+        router.push(`/shows/${episode.show_id}`);
+      } else {
+        router.push("/shows");
+      }
+    } catch (err: any) {
+      setError(err.message || "Delete failed");
+    }
+  }
+
   useEffect(() => {
     if (episodeId) {
       fetchEpisode();
@@ -149,7 +197,19 @@ export default function EpisodeDetailPage() {
     }
   }, [episodeId]);
 
+  // Prefill edit form when episode loads or changes
+  useEffect(() => {
+    if (episode) {
+      setEditEp({
+        title: episode.title,
+        episode_number: episode.episode_number || "",
+        description: episode.description || "",
+      });
+    }
+  }, [episode]);
+
   if (!episode) return <div className="text-zinc-400">Loading episode...</div>;
+  if (error) return <div className="text-red-400">{error}</div>;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -198,6 +258,64 @@ export default function EpisodeDetailPage() {
             {ingestStatus && <div className="mt-2 text-sm text-emerald-400">{ingestStatus}</div>}
           </div>
           <div className="text-sm text-zinc-400">Description: {episode.description || "—"}</div>
+
+          {/* M2 CRUD: Edit / Delete Episode */}
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={() => setShowEdit(!showEdit)}
+              className="rounded border border-zinc-700 px-3 py-1 text-sm hover:bg-zinc-800"
+            >
+              {showEdit ? "Cancel Edit" : "Edit Episode"}
+            </button>
+            <button
+              onClick={deleteEpisode}
+              className="rounded border border-red-700 px-3 py-1 text-sm text-red-400 hover:bg-zinc-800"
+            >
+              Delete Episode
+            </button>
+          </div>
+
+          {showEdit && (
+            <form onSubmit={updateEpisode} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3 mt-2">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editEp.title}
+                  onChange={(e) => setEditEp({ ...editEp, title: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Episode # (optional)</label>
+                  <input
+                    type="text"
+                    value={editEp.episode_number}
+                    onChange={(e) => setEditEp({ ...editEp, episode_number: e.target.value })}
+                    className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Description (optional)</label>
+                  <input
+                    type="text"
+                    value={editEp.description}
+                    onChange={(e) => setEditEp({ ...editEp, description: e.target.value })}
+                    className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={updating}
+                className="rounded bg-white text-black px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+              >
+                {updating ? "Saving..." : "Save Changes"}
+              </button>
+            </form>
+          )}
         </div>
       )}
 
