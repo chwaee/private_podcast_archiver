@@ -9,6 +9,11 @@ This is equivalent to the initial Alembic migration at this stage of the project
 import os
 import sys
 
+# Force the Docker-internal DB URL (in case the process inherits a localhost one
+# from the host .env via compose env_file). This must happen before importing
+# anything that loads config.py.
+os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:postgres@db:5432/podcast_copilot"
+
 # Ensure we can import the app package when run from /app in the container
 # (the volume mount puts the api code at /app, so "app/" package is at /app/app)
 if "/app" not in sys.path:

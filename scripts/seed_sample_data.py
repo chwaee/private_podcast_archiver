@@ -13,6 +13,14 @@ Usage (example inside container):
 import os
 import sys
 
+# Force the Docker-internal DB URL early (before any config import).
+# This prevents the app from accidentally using a localhost URL that may have
+# been injected by the host .env via compose's env_file.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg://postgres:postgres@db:5432/podcast_copilot",
+)
+
 # Make the app package importable.
 # Supports:
 # - Running from project root (traditional)

@@ -13,6 +13,12 @@ DATABASE_URL: str = os.getenv(
     "postgresql+psycopg://postgres:postgres@localhost:5432/podcast_copilot",
 )
 
+# In the Docker Compose context (the recommended dev workflow), force the internal
+# service hostname so that even if the user's .env contains a localhost URL from
+# local (non-Docker) development, the container always talks to the 'db' service.
+if "localhost" in DATABASE_URL or "127.0.0.1" in DATABASE_URL:
+    DATABASE_URL = "postgresql+psycopg://postgres:postgres@db:5432/podcast_copilot"
+
 UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "/app/data/uploads")
 EXPORTS_DIR: str = os.getenv("EXPORTS_DIR", "/app/data/exports")
 
