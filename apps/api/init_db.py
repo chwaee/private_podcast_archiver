@@ -19,6 +19,11 @@ os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:postgres@db:5432/pod
 if "/app" not in sys.path:
     sys.path.insert(0, "/app")
 
+# Import all models so their tables are registered on Base.metadata
+# before we call create_all. This is required because models/__init__.py
+# defines the ORM classes that inherit from Base.
+import app.models
+
 from sqlalchemy import text
 
 from app.database import engine, Base
