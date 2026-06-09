@@ -12,12 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Dependencies are taken from pyproject.toml to stay in sync (M3/M4 deps like python-multipart, httpx, pgvector are included there).
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir $(python -c '
-import tomllib
-with open("pyproject.toml", "rb") as f:
-    data = tomllib.load(f)
-print(" ".join(data["project"]["dependencies"]))
-')
+    pip install --no-cache-dir $(python -c "import tomllib; data = tomllib.load(open('pyproject.toml', 'rb')); print(' '.join(data['project']['dependencies']))")
 
 # Copy the rest of the app (volume mount will override in dev)
 COPY . .
