@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the rest of the app (volume mount will override in dev)
 COPY . .
 
-# Entrypoint that runs migrations + seed automatically (for `docker compose up -d --build` only workflow)
+# Entrypoint that runs direct schema init (create_all) + seed automatically.
+# This supports the desired single-command `docker compose up -d --build` workflow
+# (no manual migrations or `docker compose run` seed commands).
 RUN chmod +x entrypoint.sh || true
 
 EXPOSE 8000

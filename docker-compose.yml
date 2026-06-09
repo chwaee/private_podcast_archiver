@@ -22,8 +22,9 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    # Use entrypoint.sh which handles: wait (via depends_on), alembic upgrade, seed demo data, then uvicorn
-    # This enables the single-command `docker compose up -d --build` workflow.
+    # Use entrypoint.sh which handles: schema init via models (create_all), idempotent demo seed,
+    # then uvicorn. This enables the single-command `docker compose up -d --build` workflow.
+    # No manual alembic or seed commands needed.
     command: ./entrypoint.sh
     volumes:
       - ./apps/api:/app
